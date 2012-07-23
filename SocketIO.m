@@ -25,7 +25,8 @@
 #import "SRWebSocket.h"
 #import "SBJson.h"
 
-#define DEBUG_LOGS 1
+// Set DEBUG_LOGS to 1 in build configuration to get logging
+//#define DEBUG_LOGS 1
 #define DEBUG_CERTIFICATE 1
 
 static NSString* kInsecureHandshakeURL = @"http://%@:%d/socket.io/1/?t=%d%@";
