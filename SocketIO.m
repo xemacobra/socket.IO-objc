@@ -662,9 +662,15 @@ didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge
     {
         [_delegate socketIOFailedToConnect:self error:error];
     }
-    
+
+    // Save the queue (will get cleared in onDisconnect)
+    NSMutableArray *queueCopy = [_queue mutableCopy];
+
     // Assuming this resulted in a disconnect
     [self onDisconnect];
+
+    // Restore the queue
+    _queue = queueCopy;
 }
 
 - (void) webSocket:(SRWebSocket *)webSocket 
