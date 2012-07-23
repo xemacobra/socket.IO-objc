@@ -658,6 +658,11 @@ didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge
 - (void) webSocket:(SRWebSocket *)webSocket didFailWithError:(NSError *)error
 {
     NSLog(@"ERROR: Socket failed with error ... %@", [error localizedDescription]);
+    if ([_delegate respondsToSelector:@selector(socketIOFailedToConnect:error:)])
+    {
+        [_delegate socketIOFailedToConnect:self error:error];
+    }
+    
     // Assuming this resulted in a disconnect
     [self onDisconnect];
 }
