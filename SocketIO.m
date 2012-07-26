@@ -274,7 +274,7 @@ static NSString* kSecureXHRURL = @"https://%@:%d/socket.io/1/xhr-polling/%@";
     }
 
     NSString *req = [encoded componentsJoinedByString:@":"];
-    if (!_isConnected) {
+    if (!_isConnected || _webSocket.readyState != SR_OPEN) {
         [self log:[NSString stringWithFormat:@"queue >>> %@", req]];
         [_queue addObject:packet];
     }
