@@ -73,7 +73,7 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 
 @implementation SocketIO
 
-@synthesize isConnected = _isConnected, isConnecting = _isConnecting, useSecure = _useSecure;
+@synthesize isConnected = _isConnected, isConnecting = _isConnecting, useSecure = _useSecure, delegate = _delegate;
 
 - (id) initWithDelegate:(id<SocketIODelegate>)delegate
 {
@@ -147,9 +147,6 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 - (void) disconnect
 {
     [self sendDisconnect];
-    
-    // clear delegate - otherwise crashes
-    _delegate = nil;
 }
 
 - (void) sendMessage:(NSString *)data
