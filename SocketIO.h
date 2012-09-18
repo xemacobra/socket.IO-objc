@@ -1,6 +1,6 @@
 //
 //  SocketIO.h
-//  v0.22 ARC
+//  v0.23 ARC
 //
 //  based on 
 //  socketio-cocoa https://github.com/fpotter/socketio-cocoa
@@ -28,6 +28,12 @@
 
 typedef void(^SocketIOCallback)(id argsData);
 
+extern NSString* const SocketIOError;
+
+typedef enum {
+    SocketIOServerRespondedWithInvalidConnectionData = -1
+} SocketIOErrorCodes;
+
 @protocol SocketIODelegate <NSObject>
 @optional
 - (void) socketIODidConnect:(SocketIO *)socket;
@@ -37,7 +43,7 @@ typedef void(^SocketIOCallback)(id argsData);
 - (void) socketIO:(SocketIO *)socket didReceiveEvent:(SocketIOPacket *)packet;
 - (void) socketIO:(SocketIO *)socket didSendMessage:(SocketIOPacket *)packet;
 - (void) socketIOHandshakeFailed:(SocketIO *)socket;
-- (void) socketIOFailedToConnect:(SocketIO *)socket error:(NSError *)error;
+- (void) socketIO:(SocketIO *)socket failedToConnectWithError:(NSError *)error;
 @end
 
 
@@ -85,8 +91,8 @@ typedef void(^SocketIOCallback)(id argsData);
 - (void) sendMessage:(NSString *)data withAcknowledge:(SocketIOCallback)function;
 - (void) sendJSON:(NSDictionary *)data;
 - (void) sendJSON:(NSDictionary *)data withAcknowledge:(SocketIOCallback)function;
-- (void) sendEvent:(NSString *)eventName withData:(NSDictionary *)data;
-- (void) sendEvent:(NSString *)eventName withData:(NSDictionary *)data andAcknowledge:(SocketIOCallback)function;
+- (void) sendEvent:(NSString *)eventName withData:(id)data;
+- (void) sendEvent:(NSString *)eventName withData:(id)data andAcknowledge:(SocketIOCallback)function;
 - (void) sendAcknowledgement:(NSString*)pId withArgs:(NSArray *)data;
 
 @end
