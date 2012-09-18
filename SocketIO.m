@@ -1,6 +1,6 @@
 //
 //  SocketIO.m
-//  v0.22 ARC
+//  v0.23 ARC
 //
 //  based on
 //  socketio-cocoa https://github.com/fpotter/socketio-cocoa
@@ -21,9 +21,9 @@
 //
 
 #import "SocketIO.h"
+#import "SocketIOJSONSerialization.h"
 
 #import "SRWebSocket.h"
-#import "JSONKit.h"
 
 // Set DEBUG_LOGS to 1 in build configuration to get logging
 //#define DEBUG_LOGS 1
@@ -42,6 +42,8 @@ static NSString* kSecureSocketPortURL = @"wss://%@:%d/socket.io/1/websocket/%@";
 static NSString* kInsecureXHRPortURL = @"http://%@:%d/socket.io/1/xhr-polling/%@";
 static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@";
 
+NSString* const SocketIOError     = @"SocketIOError";
+NSString* const SocketIOException = @"SocketIOException";
 
 # pragma mark -
 # pragma mark SocketIO's private interface
@@ -67,13 +69,15 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 
 @end
 
-
 # pragma mark -
 # pragma mark SocketIO implementation
 
 @implementation SocketIO
 
-@synthesize isConnected = _isConnected, isConnecting = _isConnecting, useSecure = _useSecure, delegate = _delegate;
+@synthesize isConnected = _isConnected,
+            isConnecting = _isConnecting,
+            useSecure = _useSecure,
+            delegate = _delegate;
 
 - (id) initWithDelegate:(id<SocketIODelegate>)delegate
 {
@@ -99,8 +103,7 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 
 - (void) connectToHost:(NSString *)host onPort:(NSInteger)port withParams:(NSDictionary *)params withNamespace:(NSString *)endpoint
 {
-    if (!_isConnected && !_isConnecting)
-    {
+    if (!_isConnected && !_isConnecting) {
         _isConnecting = YES;
 
         _host = host;
@@ -111,18 +114,21 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
         // create a query parameters string
         NSMutableString *query = [[NSMutableString alloc] initWithString:@""];
         [params enumerateKeysAndObjectsUsingBlock: ^(id key, id value, BOOL *stop) {
-            [query appendFormat:@"&%@=%@",key,value];
+            [query appendFormat:@"&%@=%@", key, value];
         }];
 
         // do handshake via HTTP request
         NSString *s;
+        NSString *format;
         if (_port) {
-            s = [NSString stringWithFormat:(_useSecure ? kSecureHandshakePortURL : kInsecureHandshakePortURL), _host, _port, rand(), query];
+            format = _useSecure ? kSecureHandshakePortURL : kInsecureHandshakePortURL;
+            s = [NSString stringWithFormat:format, _host, _port, rand(), query];
         }
         else {
-            s = [NSString stringWithFormat:(_useSecure ? kSecureHandshakeURL : kInsecureHandshakeURL), _host, rand(), query];
+            format = _useSecure ? kSecureHandshakeURL : kInsecureHandshakeURL;
+            s = [NSString stringWithFormat:format, _host, rand(), query];
         }
-        [self log:[NSString stringWithFormat:@"Connecting to socket with URL: %@",s]];
+        [self log:[NSString stringWithFormat:@"Connecting to socket with URL: %@", s]];
         NSURL *url = [NSURL URLWithString:s];
         query = nil;
 
@@ -170,27 +176,27 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 - (void) sendJSON:(NSDictionary *)data withAcknowledge:(SocketIOCallback)function
 {
     SocketIOPacket *packet = [[SocketIOPacket alloc] initWithType:@"json"];
-    packet.data = [data JSONString];
+    packet.data = [SocketIOJSONSerialization JSONStringFromObject:data error:nil];
     packet.pId = [self addAcknowledge:function];
     [self send:packet];
 }
 
-- (void) sendEvent:(NSString *)eventName withData:(NSDictionary *)data
+- (void) sendEvent:(NSString *)eventName withData:(id)data
 {
     [self sendEvent:eventName withData:data andAcknowledge:nil];
 }
 
-- (void) sendEvent:(NSString *)eventName withData:(NSDictionary *)data andAcknowledge:(SocketIOCallback)function
+- (void) sendEvent:(NSString *)eventName withData:(id)data andAcknowledge:(SocketIOCallback)function
 {
     NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithObject:eventName forKey:@"name"];
 
     // do not require arguments
     if (data != nil) {
-        [dict setObject:data forKey:@"args"];
+        [dict setObject:[NSArray arrayWithObject:data] forKey:@"args"];
     }
 
     SocketIOPacket *packet = [[SocketIOPacket alloc] initWithType:@"event"];
-    packet.data = [dict JSONString];
+    packet.data = [SocketIOJSONSerialization JSONStringFromObject:dict error:nil];
     packet.pId = [self addAcknowledge:function];
     if (function) {
         packet.ack = @"data";
@@ -201,7 +207,7 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 - (void) sendAcknowledgement:(NSString *)pId withArgs:(NSArray *)data
 {
     SocketIOPacket *packet = [[SocketIOPacket alloc] initWithType:@"ack"];
-    packet.data = [data JSONString];
+    packet.data = [SocketIOJSONSerialization JSONStringFromObject:data error:nil];
     packet.pId = pId;
     packet.ack = @"data";
 
@@ -214,10 +220,15 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 - (void) openSocket
 {
     NSString *urlStr;
-    if(_port)
-        urlStr = [NSString stringWithFormat:(_useSecure ? kSecureSocketPortURL : kInsecureSocketPortURL), _host, _port, _sid];
-    else
-        urlStr = [NSString stringWithFormat:(_useSecure ? kSecureSocketURL : kInsecureSocketURL), _host, _sid];
+    NSString *format;
+    if(_port) {
+        format = _useSecure ? kSecureSocketPortURL : kInsecureSocketPortURL;
+        urlStr = [NSString stringWithFormat:format, _host, _port, _sid];
+    }
+    else {
+        format = _useSecure ? kSecureSocketURL : kInsecureSocketURL;
+        urlStr = [NSString stringWithFormat:format, _host, _sid];
+    }
     NSURL *url = [NSURL URLWithString:urlStr];
 
     _webSocket = nil;
@@ -231,10 +242,15 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 - (void) openXHRPolling
 {
     NSString *url;
-    if (_port)
-        url = [NSString stringWithFormat:(_useSecure ? kSecureXHRPortURL : kInsecureXHRPortURL), _host, _port, _sid];
-    else
-        url = [NSString stringWithFormat:(_useSecure ? kSecureXHRURL : kInsecureXHRURL), _host, _sid];
+    NSString *format;
+    if (_port) {
+        format = _useSecure ? kSecureXHRPortURL : kInsecureXHRPortURL;
+        url = [NSString stringWithFormat:format, _host, _port, _sid];
+    }
+    else {
+        format = _useSecure ? kSecureXHRURL : kInsecureXHRURL;
+        url = [NSString stringWithFormat:format, _host, _sid];
+    }
     [self log:[NSString stringWithFormat:@"Opening XHR @ %@", url]];
 
     // TODO: implement
@@ -265,8 +281,7 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
     NSMutableArray *encoded = [NSMutableArray arrayWithObject:type];
 
     NSString *pId = packet.pId != nil ? packet.pId : @"";
-    if ([packet.ack isEqualToString:@"data"])
-    {
+    if ([packet.ack isEqualToString:@"data"]) {
         pId = [pId stringByAppendingString:@"+"];
     }
 
@@ -401,7 +416,7 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
                     NSString *argsStr = [piece objectAtIndex:3];
                     id argsData = nil;
                     if (argsStr && ![argsStr isEqualToString:@""]) {
-                        argsData = [argsStr objectFromJSONString];
+                        argsData = [SocketIOJSONSerialization objectFromJSONData:[argsStr dataUsingEncoding:NSUTF8StringEncoding] error:nil];
                         if ([argsData count] > 0) {
                             argsData = [argsData objectAtIndex:0];
                         }
@@ -442,7 +457,7 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 
 - (void) doQueue
 {
-    [self log:[NSString stringWithFormat:@"doQueue() >> %d", [_queue count]]];
+    [self log:[NSString stringWithFormat:@"doQueue() >> %lu", (unsigned long)[_queue count]]];
 
     // TODO send all packets at once ... not as seperate packets
     while ([_queue count] > 0) {
@@ -519,7 +534,7 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 {
     if (function) {
         ++_ackCount;
-        NSString *ac = [NSString stringWithFormat:@"%d", _ackCount];
+        NSString *ac = [NSString stringWithFormat:@"%ld", (long)_ackCount];
         [_acks setObject:[function copy] forKey:ac];
         return ac;
     }
@@ -566,7 +581,7 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 
     for (NSTextCheckingResult *nsmatchTest in nsmatchesTest) {
         NSMutableArray *localMatch = [NSMutableArray array];
-        for (int i = 0, l = [nsmatchTest numberOfRanges]; i < l; i++) {
+        for (NSUInteger i = 0, l = [nsmatchTest numberOfRanges]; i < l; i++) {
             NSRange range = [nsmatchTest rangeAtIndex:i];
             NSString *nsmatchStr = nil;
             if (range.location != NSNotFound && NSMaxRange(range) <= [data length]) {
@@ -588,6 +603,25 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 # pragma mark Handshake callbacks (NSURLConnectionDataDelegate)
 - (void) connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response
 {
+    // check for server status code (http://gigliwood.com/weblog/Cocoa/Q__When_is_an_conne.html)
+    if ([response respondsToSelector:@selector(statusCode)]) {
+        int statusCode = [((NSHTTPURLResponse *)response) statusCode];
+        [self log:[NSString stringWithFormat:@"didReceiveResponse() %i", statusCode]];
+
+        if (statusCode >= 400) {
+            // stop connecting; no more delegate messages
+            [connection cancel];
+
+            NSString *error = [NSString stringWithFormat:NSLocalizedString(@"Server returned status code %d", @""), statusCode];
+            NSDictionary *errorInfo = [NSDictionary dictionaryWithObject:error forKey:NSLocalizedDescriptionKey];
+            NSError *statusError = [NSError errorWithDomain:SocketIOError
+                                                       code:statusCode
+                                                   userInfo:errorInfo];
+            // call error callback manually
+            [self connection:connection didFailWithError:statusError];
+        }
+    }
+
     [_httpRequestData setLength:0];
 }
 
@@ -612,10 +646,20 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 {
   NSString *responseString = [[NSString alloc] initWithData:_httpRequestData encoding:NSASCIIStringEncoding];
 
-    [self log:[NSString stringWithFormat:@"requestFinished() %@", responseString]];
+    [self log:[NSString stringWithFormat:@"connectionDidFinishLoading() %@", responseString]];
     NSArray *data = [responseString componentsSeparatedByString:@":"];
+    // should be SID : heartbeat timeout : connection timeout : supported transports
+
+    // check each returned value (thanks for the input https://github.com/taiyangc)
+    BOOL connectionFailed = false;
 
     _sid = [data objectAtIndex:0];
+    if ([_sid length] < 1 || [data count] < 4) {
+        // did not receive valid data, possibly missing a useSecure?
+        connectionFailed = true;
+    }
+
+    // check SID
     [self log:[NSString stringWithFormat:@"sid: %@", _sid]];
     NSString *regex = @"[^0-9]";
     NSPredicate *regexTest = [NSPredicate predicateWithFormat:@"SELF MATCHES %@", regex];
@@ -623,18 +667,44 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
         [self connectToHost:_host onPort:_port withParams:_params withNamespace:_endpoint];
         return;
     }
-    
-    // add small buffer of 7sec (magic xD)
-    _heartbeatTimeout = [[data objectAtIndex:1] floatValue] + 7.0;
+
+    // check heartbeat timeout
+    _heartbeatTimeout = [[data objectAtIndex:1] floatValue];
+    if (_heartbeatTimeout == 0.0) {
+        // couldn't find float value -> fail
+        connectionFailed = true;
+    }
+    else {
+        // add small buffer of 7sec (magic xD)
+        _heartbeatTimeout += 7.0;
+    }
     [self log:[NSString stringWithFormat:@"heartbeatTimeout: %f", _heartbeatTimeout]];
 
     // index 2 => connection timeout
 
+    // get transports
     NSString *t = [data objectAtIndex:3];
     NSArray *transports = [t componentsSeparatedByString:@","];
     [self log:[NSString stringWithFormat:@"transports: %@", transports]];
-
     // TODO: check which transports are supported by the server
+
+    // if connection didn't return the values we need -> fail
+    if (connectionFailed) {
+        if ([_delegate respondsToSelector:@selector(socketIO:failedToConnectWithError:)]) {
+            NSError* error;
+
+            error = [NSError errorWithDomain:SocketIOError
+                                        code:SocketIOServerRespondedWithInvalidConnectionData
+                                    userInfo:nil];
+
+            [_delegate socketIO:self failedToConnectWithError:error];
+        }
+
+        // make sure to do call all cleanup code
+        [self onDisconnect];
+
+        return;
+    }
 
     // if websocket
     [self openSocket];
@@ -648,21 +718,18 @@ static NSString* kSecureXHRPortURL = @"https://%@:%d/socket.io/1/xhr-polling/%@"
 - (BOOL) connection:(NSURLConnection *)connection
 canAuthenticateAgainstProtectionSpace:(NSURLProtectionSpace *)protectionSpace
 {
-    return [protectionSpace.authenticationMethod
-            isEqualToString:NSURLAuthenticationMethodServerTrust];
+    return [protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodServerTrust];
 }
 
 - (void) connection:(NSURLConnection *)connection
 didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge
 {
     if ([challenge.protectionSpace.authenticationMethod
-         isEqualToString:NSURLAuthenticationMethodServerTrust])
-    {
+         isEqualToString:NSURLAuthenticationMethodServerTrust]) {
         // we only trust our own domain
-        if ([challenge.protectionSpace.host isEqualToString:_host])
-        {
-            NSURLCredential *credential =
-            [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust];
+        if ([challenge.protectionSpace.host isEqualToString:_host]) {
+            SecTrustRef trust = challenge.protectionSpace.serverTrust;
+            NSURLCredential *credential = [NSURLCredential credentialForTrust:trust];
             [challenge.sender useCredential:credential forAuthenticationChallenge:challenge];
         }
     }
@@ -687,9 +754,9 @@ didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge
 - (void) webSocket:(SRWebSocket *)webSocket didFailWithError:(NSError *)error
 {
     NSLog(@"ERROR: Socket failed with error ... %@", [error localizedDescription]);
-    if ([_delegate respondsToSelector:@selector(socketIOFailedToConnect:error:)])
+    if ([_delegate respondsToSelector:@selector(socketIO:failedToConnectWithError:)])
     {
-        [_delegate socketIOFailedToConnect:self error:error];
+        [_delegate socketIO:self failedToConnectWithError:error];
     }
 
     // Save the queue (will get cleared in onDisconnect)
@@ -786,13 +853,13 @@ didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge
 
 - (id) dataAsJSON
 {
-    return [self.data objectFromJSONString];
+    return [SocketIOJSONSerialization objectFromJSONData:[[self data] dataUsingEncoding:NSUTF8StringEncoding] error:nil];
 }
 
 - (NSNumber *) typeAsNumber
 {
-    int index = [_types indexOfObject:self.type];
-    NSNumber *num = [NSNumber numberWithInt:index];
+    NSUInteger index = [_types indexOfObject:self.type];
+    NSNumber *num = [NSNumber numberWithUnsignedInteger:index];
     return num;
 }
 
