@@ -25,7 +25,7 @@
 
 #import "SRWebSocket.h"
 
-#define DEBUG_LOGS        DUBUG_REALTIME
+#define DEBUG_LOGS        1//DUBUG_REALTIME
 #define DEBUG_CERTIFICATE 1
 
 static NSString* kInsecureHandshakeURL = @"http://%@/socket.io/1/?t=%d%@";
@@ -762,7 +762,7 @@ didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge
             reason:(NSString *)reason 
           wasClean:(BOOL)wasClean
 {
-    [self log:[NSString stringWithFormat:@"Socket closed."]];
+    [self log:[NSString stringWithFormat:@"Socket closed. Reason: %@", reason]];
     [self onDisconnect];
 }
 
