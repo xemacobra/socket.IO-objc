@@ -25,7 +25,7 @@
 
 #import "SRWebSocket.h"
 
-#define DEBUG_LOGS        DUBUG_REALTIME
+#define DEBUG_LOGS        DEBUG_REALTIME
 #define DEBUG_CERTIFICATE 1
 
 static NSString* kInsecureHandshakeURL = @"http://%@/socket.io/1/?t=%d%@";
